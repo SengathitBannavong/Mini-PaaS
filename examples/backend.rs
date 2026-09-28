@@ -4,38 +4,58 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
+use std::env;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
-async fn handle(
-	req: Request<hyper::body::Incoming>,
-) -> Result<Response<Full<Bytes>>, hyper::Error> {
-
-	let path = req.uri().path();
-	let body = format! (
-		"Hello from the backend!\nYou requested: {} {}\n",
-		req.method(),
-		path
-	);
-	Ok(Response::new(Full::new(Bytes::from(body))))
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let addr = SocketAddr::from(([127,0,0,1],8080));
-	let listener = TcpListener::bind(addr).await?;
-	println!("Backend server listening on http://{}", addr);
-	
-	loop {
-		let (stream, _) = listener.accept().await?;
-		let io = TokioIo::new(stream);
-		tokio::task::spawn(async move {
-			if let Err(err) = http1::Builder::new()
-				.serve_connection(io, service_fn(handle))
-				.await
-			{
-				eprintln!("Error: {:?}", err);
-			}
-		});
-	}
+    let port: u16 = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "8080".to_string())
+        .parse()
+        .expect("Invalid port number");
+
+    let name = env::args()
+        .nth(2)
+        .unwrap_or_else(|| format!("backend-{}", port));
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let listener = TcpListener::bind(addr).await?;
+    println!("{} listening on http://{}", name, addr);
+
+    loop {
+        let (stream, peer) = listener.accept().await?;
+        let io = TokioIo::new(stream);
+        let name = name.clone();
+        tokio::task::spawn(async move {
+            if let Err(err) = http1::Builder::new()
+                .serve_connection(
+                    io,
+                    service_fn(move |req| {
+                        let name = name.clone();
+                        async move { handle(req, &name, peer.ip()).await }
+                    }),
+                )
+                .await
+            {
+                eprintln!("Error: {:?}", err);
+            }
+        });
+    }
+}
+
+async fn handle(
+    req: Request<hyper::body::Incoming>,
+    name: &str,
+    client_ip: std::net::IpAddr,
+) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    let body = format!(
+        "Response from: {} at {}\nPath: {} {}\n",
+        name,
+        client_ip.to_string(),
+        req.method(),
+        req.uri().path()
+    );
+    Ok(Response::new(Full::new(Bytes::from(body))))
 }

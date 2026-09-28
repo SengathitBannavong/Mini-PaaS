@@ -1,26 +1,48 @@
+mod proxy;
+mod router;
+
 use bytes::Bytes;
-use http_body_util::{BodyExt, Empty, Full, combinators::BoxBody};
+use http_body_util::{BodyExt, Full, combinators::BoxBody};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::TcpListener;
+
+use crate::router::Router;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Configure our routes
+    let mut router = Router::new();
+    println!("Configuring routes...");
+    router.add_route("/", "http://127.0.0.1:8080");
+    router.add_route("/api/users", "http://127.0.0.1:8081");
+    router.add_route("/api/orders", "http://127.0.0.1:8082");
+
+    let router = Arc::new(router);
+
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = TcpListener::bind(addr).await?;
 
     println!("Reverse proxy API Gateway listening on http://{}", addr);
 
     loop {
-        let (stream, _) = listener.accept().await?;
+        let (stream, peer) = listener.accept().await?;
         let io = TokioIo::new(stream);
+        let router = router.clone();
 
         tokio::task::spawn(async move {
             if let Err(err) = http1::Builder::new()
-                .serve_connection(io, service_fn(handle_request))
+                .serve_connection(
+                    io,
+                    service_fn(move |req| {
+                        let router = router.clone();
+                        async move { handle_request(req, &router, peer.ip()).await }
+                    }),
+                )
                 .await
             {
                 eprintln!("Error serving connection: {:?}", err);
@@ -31,47 +53,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn handle_request(
     req: Request<hyper::body::Incoming>,
+    router: &Router,
+    client_ip: std::net::IpAddr,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-    let backend_url = "http://127.0.0.1:8080";
     let path = req.uri().path().to_string();
-    let method = req.method().clone();
 
-    println!("--> {} {}", method, path);
-
-    let uri = format!("{}{}", backend_url, path);
-
-    let host = "127.0.0.1";
-    let port = 8080;
-    let stream = TcpListener::bind("0.0.0.0:0").await.ok();
-    let backend_stream = tokio::net::TcpStream::connect(format!("{}:{}", host, port)).await;
-
-    match backend_stream {
-        Ok(stream) => {
-            let io = TokioIo::new(stream);
-
-            let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
-
-            // Spawn the connection handler
-            tokio::task::spawn(async move {
-                if let Err(err) = conn.await {
-                    eprintln!("Connection error: {:?}", err);
-                }
-            });
-
-            // Forward the request
-            let upstream_req = Request::builder()
-                .method(method)
-                .uri(&path)
-                .header("Host", host)
-                .body(req.into_body().boxed())
-                .unwrap();
-            let response = sender.send_request(upstream_req).await?;
-
-            // Map the response body
-            Ok(response.map(|b| b.boxed()))
-        }
-        Err(_) => {
-            // Backend is unreadable
+    match router.find_route(&path) {
+        Some(route) => proxy::forward_request(req, route, client_ip).await,
+        None => {
             let body = Full::new(Bytes::from("502 Bad Gateway"))
                 .map_err(|never| match never {})
                 .boxed();
