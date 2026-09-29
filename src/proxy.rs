@@ -6,7 +6,7 @@ use hyper_util::rt::TokioIo;
 use crate::router::Route;
 
 pub async fn forward_request(
-    req: Request<hyper::body::Incoming>,
+    req: Request<BoxBody<Bytes, hyper::Error>>,
     route: &Route,
     client_ip: std::net::IpAddr,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
