@@ -5,6 +5,7 @@ use hyper::{Request, Response};
 pub mod cors;
 pub mod headers;
 pub mod logging;
+pub mod ratelimit;
 
 /// The context that flows through the middleware pipeline
 pub struct RequestContext {

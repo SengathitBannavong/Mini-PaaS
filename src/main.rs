@@ -1,5 +1,6 @@
 mod middleware;
 mod proxy;
+mod ratelimit;
 mod router;
 
 use bytes::Bytes;
@@ -8,6 +9,8 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
+use middleware::ratelimit::RateLimitMiddleware;
+use ratelimit::{RateLimitConfig, RateLimiter};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -33,10 +36,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     router.add_route("/api/orders", "http://127.0.0.1:8082");
 
     // Configure middleware
+    let rate_config = RateLimitConfig::new(10, 1.0);
+    let rate_limiter = RateLimiter::new(rate_config);
     let mut pipeline = MiddlewarePipeline::new();
     println!("Configuring middleware...");
     pipeline.add(Box::new(LoggingMiddleware));
-
+    pipeline.add(Box::new(RateLimitMiddleware::new(rate_limiter)));
     let allowed_origins = vec!["http://a.com".to_string()];
     pipeline.add(Box::new(CorsMiddleware::new(allowed_origins)));
     pipeline.add(Box::new(
