@@ -1,3 +1,4 @@
+mod health;
 mod middleware;
 mod proxy;
 mod ratelimit;
@@ -31,9 +32,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configure our routes
     let mut router = Router::new();
     println!("Configuring routes...");
-    router.add_route("/", "http://127.0.0.1:8080");
-    router.add_route("/api/users", "http://127.0.0.1:8081");
-    router.add_route("/api/orders", "http://127.0.0.1:8082");
+    router.add_route(
+        "/api/users",
+        vec!["http://127.0.0.1:8081", "http://127.0.0.1:8083"],
+    );
+    router.add_route(
+        "/api/users",
+        vec!["http://127.0.0.1:8082", "http://127.0.0.1:8084"],
+    );
+    router.add_route("/", vec!["http://127.0.0.1:8080"]);
+
+    // Start background health checks
+    println!("Starting health checks...");
+    let routes_for_health = router.all_routes().to_vec();
+    health::start_health_checks(routes_for_health, 10);
 
     // Configure middleware
     let rate_config = RateLimitConfig::new(10, 1.0);
@@ -108,7 +120,20 @@ async fn handle_request(
 
     // Route and proxy
     let response = match gateway.router.find_route(&path) {
-        Some(route) => proxy::forward_request(boxed_req, route, client_ip).await?,
+        Some(route) => match route.next_backend() {
+            Some(backend) => {
+                proxy::forward_request(boxed_req, &backend, &route.path_prefix, client_ip).await?
+            }
+            None => {
+                // All backends are down
+                let body = Full::new(Bytes::from(
+                    "503 Service Unavailable\nAll backends are unhealthy.\n",
+                ))
+                .map_err(|never| match never {})
+                .boxed();
+                Response::builder().status(503).body(body).unwrap()
+            }
+        },
         None => {
             let body = Full::new(Bytes::from("404 Not Found"))
                 .map_err(|never| match never {})

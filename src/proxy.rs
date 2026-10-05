@@ -3,21 +3,20 @@ use http_body_util::{BodyExt, Full, combinators::BoxBody};
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 
-use crate::router::Route;
+use crate::router::Backend;
 
 pub async fn forward_request(
     req: Request<BoxBody<Bytes, hyper::Error>>,
-    route: &Route,
+    backend: &Backend,
+    path_prefix: &str,
     client_ip: std::net::IpAddr,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
     let path = req.uri().path().to_string();
     let method = req.method().clone();
+    let url = backend.address();
+    println!("--> {} {} -> {}", method, path, url);
 
-    println!("--> {} {} -> {}", method, path, route.backend_url);
-
-    let backend_stream =
-        tokio::net::TcpStream::connect(format!("{}:{}", route.backend_host, route.backend_port))
-            .await;
+    let backend_stream = tokio::net::TcpStream::connect(url.clone()).await;
 
     match backend_stream {
         Ok(stream) => {
@@ -31,10 +30,10 @@ pub async fn forward_request(
             });
 
             // Strip the route prefix from the path if needed
-            let upstream_path = if path == route.path_prefix {
+            let upstream_path = if path == path_prefix {
                 "/".to_string()
             } else {
-                path[route.path_prefix.len()..].to_string()
+                path[path_prefix.len()..].to_string()
             };
             let upstream_path = if upstream_path.is_empty() || !upstream_path.starts_with('/') {
                 format!("/{}", upstream_path)
@@ -45,7 +44,7 @@ pub async fn forward_request(
             let upstream_req = Request::builder()
                 .method(method)
                 .uri(&upstream_path)
-                .header("Host", &route.backend_host)
+                .header("Host", url)
                 .header("X-Forwarded-For", client_ip.to_string())
                 .body(req.into_body().boxed())
                 .unwrap();
@@ -54,7 +53,7 @@ pub async fn forward_request(
             Ok(response.map(|b| b.boxed()))
         }
         Err(e) => {
-            eprintln!("Failed to connect to backend {}:{}", route.backend_url, e);
+            eprintln!("Failed to connect to backend {}:{}", url, e);
             let body = Full::new(Bytes::from("502 Bad Gateway"))
                 .map_err(|never| match never {})
                 .boxed();
