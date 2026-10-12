@@ -1,7 +1,6 @@
 mod health;
 mod middleware;
 mod proxy;
-mod ratelimit;
 mod router;
 
 use bytes::Bytes;
@@ -10,13 +9,10 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
-use middleware::ratelimit::RateLimitMiddleware;
-use ratelimit::{RateLimitConfig, RateLimiter};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
-use crate::middleware::cors::CorsMiddleware;
 use crate::middleware::headers::AddHeadersMiddleware;
 use crate::middleware::logging::LoggingMiddleware;
 use crate::middleware::{MiddlewarePipeline, RequestContext};
@@ -48,14 +44,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     health::start_health_checks(routes_for_health, 10);
 
     // Configure middleware
-    let rate_config = RateLimitConfig::new(10, 1.0);
-    let rate_limiter = RateLimiter::new(rate_config);
     let mut pipeline = MiddlewarePipeline::new();
     println!("Configuring middleware...");
     pipeline.add(Box::new(LoggingMiddleware));
-    pipeline.add(Box::new(RateLimitMiddleware::new(rate_limiter)));
-    let allowed_origins = vec!["http://a.com".to_string()];
-    pipeline.add(Box::new(CorsMiddleware::new(allowed_origins)));
     pipeline.add(Box::new(
         AddHeadersMiddleware::new()
             .add_request_header("X-Gateway", "reverse-proxy")
@@ -99,7 +90,7 @@ async fn handle_request(
     let ctx = RequestContext {
         client_ip: client_ip.to_string(),
         start_time: std::time::Instant::now(),
-        origin: req
+        _origin: req
             .headers()
             .get("Origin")
             .and_then(|v| v.to_str().ok())

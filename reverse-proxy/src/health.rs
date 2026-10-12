@@ -18,7 +18,7 @@ async fn check_all_backends(routes: &[Arc<Route>]) {
     for route in routes {
         let backends = route.get_backends();
         for backend in &backends {
-            let healthy = check_backend(&backend.host, backend.port).await;
+            let healthy = check_backend(&backend.url, backend.port).await;
             if !healthy {
                 println!("[health] {} is down", backend.address());
             }

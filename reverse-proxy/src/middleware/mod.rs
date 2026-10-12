@@ -2,16 +2,14 @@ use bytes::Bytes;
 use http_body_util::combinators::BoxBody;
 use hyper::{Request, Response};
 
-pub mod cors;
 pub mod headers;
 pub mod logging;
-pub mod ratelimit;
 
 /// The context that flows through the middleware pipeline
 pub struct RequestContext {
     pub client_ip: String,
     pub start_time: std::time::Instant,
-    pub origin: Option<String>, // from req.headers().get("Origin") in main.rs
+    pub _origin: Option<String>, // from req.headers().get("Origin") in main.rs
 }
 
 /// The middleware trait - implement this to create new middleware
