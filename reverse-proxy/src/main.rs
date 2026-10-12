@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         vec!["http://127.0.0.1:8081", "http://127.0.0.1:8083"],
     );
     router.add_route(
-        "/api/users",
+        "/api/orders",
         vec!["http://127.0.0.1:8082", "http://127.0.0.1:8084"],
     );
     router.add_route("/", vec!["http://127.0.0.1:8080"]);

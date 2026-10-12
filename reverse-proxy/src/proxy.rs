@@ -41,13 +41,33 @@ pub async fn forward_request(
                 upstream_path
             };
 
-            let upstream_req = Request::builder()
-                .method(method)
-                .uri(&upstream_path)
-                .header("Host", url)
-                .header("X-Forwarded-For", client_ip.to_string())
-                .body(req.into_body().boxed())
-                .unwrap();
+            let (mut parts, body) = req.into_parts();
+
+            // store query string
+            let query = parts
+                .uri
+                .query()
+                .map(|q| format!("?{q}"))
+                .unwrap_or_default();
+            parts.uri = format!("{upstream_path}{query}").parse().unwrap();
+
+            // header not forward
+            for h in [
+                "connection",
+                "keep-alive",
+                "proxy-connection",
+                "te",
+                "trailer",
+                "transfer-encoding",
+                "upgrade",
+            ] {
+                parts.headers.remove(h);
+            }
+            parts
+                .headers
+                .insert("x-forwarded-for", client_ip.to_string().parse().unwrap());
+
+            let upstream_req = Request::from_parts(parts, body);
 
             let response = sender.send_request(upstream_req).await?;
             Ok(response.map(|b| b.boxed()))
