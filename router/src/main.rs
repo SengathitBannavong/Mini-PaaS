@@ -19,28 +19,27 @@ use crate::middleware::{MiddlewarePipeline, RequestContext};
 use crate::router::Router;
 
 struct Gateway {
-    router: Router,
+    router: Arc<Router>,
     pipeline: MiddlewarePipeline,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configure our routes
-    let mut router = Router::new();
+    let router = Arc::new(Router::new());
     println!("Configuring routes...");
-    router.add_route(
+    router.set_route(
         "users.localhost",
         vec!["http://127.0.0.1:8081", "http://127.0.0.1:8083"],
     );
-    router.add_route(
+    router.set_route(
         "orders.localhost",
         vec!["http://127.0.0.1:8082", "http://127.0.0.1:8084"],
     );
 
     // Start background health checks
     println!("Starting health checks...");
-    let routes_for_health = router.all_routes();
-    health::start_health_checks(routes_for_health, 10);
+    health::start_health_checks(router.clone(), 10);
 
     // Configure middleware
     let mut pipeline = MiddlewarePipeline::new();
@@ -59,6 +58,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Reverse proxy API Gateway listening on http://{}", addr);
 
+    serve(listener, gateway).await?;
+    Ok(())
+}
+
+async fn serve(listener: TcpListener, gateway: Arc<Gateway>) -> std::io::Result<()> {
     loop {
         let (stream, peer) = listener.accept().await?;
         let io = TokioIo::new(stream);
@@ -136,4 +140,83 @@ async fn handle_request(
     };
 
     Ok(gateway.pipeline.process_response(response, &ctx))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http_body_util::Empty;
+    use tokio::net::TcpStream;
+
+    /// Backend that answers "<name> <uri> <cookie>" so the test can see what reached it.
+    async fn spawn_backend(name: &'static str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let (stream, _) = listener.accept().await.unwrap();
+                tokio::spawn(http1::Builder::new().serve_connection(
+                    TokioIo::new(stream),
+                    service_fn(move |req: Request<hyper::body::Incoming>| async move {
+                        let cookie = req
+                            .headers()
+                            .get("cookie")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("")
+                            .to_string();
+                        let body = format!("{name} {} {cookie}", req.uri());
+                        Ok::<_, hyper::Error>(Response::new(Full::new(Bytes::from(body))))
+                    }),
+                ));
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    /// Send GET `path` with `Host: host` and a cookie through the gateway.
+    async fn get(gateway: SocketAddr, host: &str, path: &str) -> (u16, String) {
+        let stream = TcpStream::connect(gateway).await.unwrap();
+        let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+            .await
+            .unwrap();
+        tokio::spawn(conn);
+        let req = Request::get(path)
+            .header(hyper::header::HOST, host)
+            .header("cookie", "a=1")
+            .body(Empty::<Bytes>::new())
+            .unwrap();
+        let res = sender.send_request(req).await.unwrap();
+        let status = res.status().as_u16();
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        (status, String::from_utf8(body.to_vec()).unwrap())
+    }
+
+    #[tokio::test]
+    async fn routes_by_host_and_swaps_at_runtime() {
+        let blue = spawn_backend("blue").await;
+        let green = spawn_backend("green").await;
+
+        let router = Arc::new(Router::new());
+        router.set_route("app.localhost", vec![blue.as_str()]);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let gateway = Gateway {
+            router: router.clone(),
+            pipeline: MiddlewarePipeline::new(),
+        };
+        tokio::spawn(serve(listener, Arc::new(gateway)));
+
+        // Host is matched ignoring case and port; path, query and cookie reach the backend untouched
+        assert_eq!(
+            get(addr, "App.Localhost:3000", "/api/users?q=1").await,
+            (200, "blue /api/users?q=1 a=1".to_string())
+        );
+
+        // Unknown host
+        assert_eq!(get(addr, "nope.localhost", "/").await.0, 404);
+
+        // Swap while running: the next request goes to green
+        router.set_route("app.localhost", vec![green.as_str()]);
+        assert_eq!(get(addr, "app.localhost", "/").await.1, "green / a=1");
+    }
 }

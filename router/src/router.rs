@@ -35,6 +35,7 @@ impl Backend {
 #[derive(Debug)]
 pub struct Route {
     pub host: String,
+    pub health_path: String, // for control plane
     backends: RwLock<Vec<Backend>>,
     current: AtomicUsize,
 }
@@ -44,6 +45,7 @@ impl Route {
         let backends: Vec<Backend> = backend_url.iter().map(|url| Backend::new(url)).collect();
         Route {
             host: host.to_string(),
+            health_path: "/".to_string(),
             backends: RwLock::new(backends),
             current: AtomicUsize::new(0),
         }
@@ -81,31 +83,35 @@ impl Route {
 }
 
 pub struct Router {
-    routes: HashMap<String, Arc<Route>>,
+    routes: RwLock<HashMap<String, Arc<Route>>>,
 }
 
 impl Router {
     pub fn new() -> Self {
         Router {
-            routes: HashMap::new(),
+            routes: RwLock::new(HashMap::new()),
         }
     }
 
-    // Add a new route to the router
-    pub fn add_route(&mut self, host: &str, backend_urls: Vec<&str>) {
+    /// Add or replace the route for `host`.
+    /// A request sees either the old route or the new one, never a mix
+    pub fn set_route(&self, host: &str, backend_urls: Vec<&str>) {
         let route = Arc::new(Route::new(host, &backend_urls));
-        println!(" Route added: {} -> {}", host, backend_urls.join(", "));
-        self.routes.insert(host.to_ascii_lowercase(), route);
+        println!(" Route set: {} -> {}", host, backend_urls.join(", "));
+        self.routes
+            .write()
+            .unwrap()
+            .insert(host.to_lowercase(), route);
     }
 
     pub fn find_route(&self, host: &str) -> Option<Arc<Route>> {
         // "Users.Localhost:3000" -> "users.localhost"
         let host = host.split(':').next().unwrap_or(host).to_ascii_lowercase();
-        self.routes.get(&host).cloned()
+        self.routes.read().unwrap().get(&host).cloned()
     }
 
     pub fn all_routes(&self) -> Vec<Arc<Route>> {
-        self.routes.values().cloned().collect()
+        self.routes.read().unwrap().values().cloned().collect()
     }
 }
 
@@ -115,9 +121,21 @@ mod tests {
 
     #[test]
     fn routes_by_host_ignoring_port_and_case() {
-        let mut r = Router::new();
-        r.add_route("users.localhost", vec!["http://127.0.0.1:8081"]);
+        let r = Router::new();
+        r.set_route("users.localhost", vec!["http://127.0.0.1:8081"]);
         assert!(r.find_route("Users.Localhost:3000").is_some());
         assert!(r.find_route("orders.localhost").is_none());
+        r.set_route(
+            "users.localhost",
+            vec!["http://127.0.0.1:8082", "http://127.0.0.1:8083"],
+        );
+        let routes: Vec<String> = r
+            .find_route("Users.Localhost:3000")
+            .unwrap()
+            .get_backends()
+            .into_iter()
+            .map(|b| b.url)
+            .collect();
+        assert_eq!(routes, ["http://127.0.0.1:8082", "http://127.0.0.1:8083"]);
     }
 }
