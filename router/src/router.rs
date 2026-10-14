@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 
 use std::sync::Arc;
@@ -33,24 +34,19 @@ impl Backend {
 
 #[derive(Debug)]
 pub struct Route {
-    pub path_prefix: String,
+    pub host: String,
     backends: RwLock<Vec<Backend>>,
     current: AtomicUsize,
 }
 
 impl Route {
-    pub fn new(path_prefix: &str, backend_url: &Vec<&str>) -> Self {
+    pub fn new(host: &str, backend_url: &Vec<&str>) -> Self {
         let backends: Vec<Backend> = backend_url.iter().map(|url| Backend::new(url)).collect();
         Route {
-            path_prefix: path_prefix.to_string(),
+            host: host.to_string(),
             backends: RwLock::new(backends),
             current: AtomicUsize::new(0),
         }
-    }
-
-    // Check if a given path matches the route's prefix
-    pub fn matches(&self, path: &str) -> bool {
-        path.starts_with(&self.path_prefix)
     }
 
     /// Get the next healthy backend using round-robin
@@ -85,33 +81,43 @@ impl Route {
 }
 
 pub struct Router {
-    routes: Vec<Arc<Route>>,
+    routes: HashMap<String, Arc<Route>>,
 }
 
 impl Router {
     pub fn new() -> Self {
-        Router { routes: Vec::new() }
+        Router {
+            routes: HashMap::new(),
+        }
     }
 
     // Add a new route to the router
-    pub fn add_route(&mut self, path_prefix: &str, backend_urls: Vec<&str>) {
-        let route = Arc::new(Route::new(path_prefix, &backend_urls));
-        let backends: Vec<String> = backend_urls.iter().map(|u| u.to_string()).collect();
-        println!(" Route added: {} -> {}", path_prefix, backends.join(", "));
-        self.routes.push(route);
+    pub fn add_route(&mut self, host: &str, backend_urls: Vec<&str>) {
+        let route = Arc::new(Route::new(host, &backend_urls));
+        println!(" Route added: {} -> {}", host, backend_urls.join(", "));
+        self.routes.insert(host.to_ascii_lowercase(), route);
     }
 
-    // Find the route that matches the given path
-    // Returns the longest matching prefix (most specific route wins)
-    pub fn find_route(&self, path: &str) -> Option<Arc<Route>> {
-        self.routes
-            .iter()
-            .filter(|route| route.matches(path))
-            .max_by_key(|route| route.path_prefix.len())
-            .cloned()
+    pub fn find_route(&self, host: &str) -> Option<Arc<Route>> {
+        // "Users.Localhost:3000" -> "users.localhost"
+        let host = host.split(':').next().unwrap_or(host).to_ascii_lowercase();
+        self.routes.get(&host).cloned()
     }
 
-    pub fn all_routes(&self) -> &[Arc<Route>] {
-        &self.routes
+    pub fn all_routes(&self) -> Vec<Arc<Route>> {
+        self.routes.values().cloned().collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn routes_by_host_ignoring_port_and_case() {
+        let mut r = Router::new();
+        r.add_route("users.localhost", vec!["http://127.0.0.1:8081"]);
+        assert!(r.find_route("Users.Localhost:3000").is_some());
+        assert!(r.find_route("orders.localhost").is_none());
     }
 }

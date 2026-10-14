@@ -29,18 +29,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut router = Router::new();
     println!("Configuring routes...");
     router.add_route(
-        "/api/users",
+        "users.localhost",
         vec!["http://127.0.0.1:8081", "http://127.0.0.1:8083"],
     );
     router.add_route(
-        "/api/orders",
+        "orders.localhost",
         vec!["http://127.0.0.1:8082", "http://127.0.0.1:8084"],
     );
-    router.add_route("/", vec!["http://127.0.0.1:8080"]);
 
     // Start background health checks
     println!("Starting health checks...");
-    let routes_for_health = router.all_routes().to_vec();
+    let routes_for_health = router.all_routes();
     health::start_health_checks(routes_for_health, 10);
 
     // Configure middleware
@@ -97,7 +96,12 @@ async fn handle_request(
             .map(String::from),
     };
 
-    let path = req.uri().path().to_string();
+    let host = req
+        .headers()
+        .get(hyper::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
 
     // Convert the incomming body to a boxed body for middleware
     let (parts, body) = req.into_parts();
@@ -110,11 +114,9 @@ async fn handle_request(
     };
 
     // Route and proxy
-    let response = match gateway.router.find_route(&path) {
+    let response = match gateway.router.find_route(&host) {
         Some(route) => match route.next_backend() {
-            Some(backend) => {
-                proxy::forward_request(boxed_req, &backend, &route.path_prefix, client_ip).await?
-            }
+            Some(backend) => proxy::forward_request(boxed_req, &backend, client_ip).await?,
             None => {
                 // All backends are down
                 let body = Full::new(Bytes::from(

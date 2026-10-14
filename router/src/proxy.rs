@@ -8,7 +8,6 @@ use crate::router::Backend;
 pub async fn forward_request(
     req: Request<BoxBody<Bytes, hyper::Error>>,
     backend: &Backend,
-    path_prefix: &str,
     client_ip: std::net::IpAddr,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
     let path = req.uri().path().to_string();
@@ -29,27 +28,7 @@ pub async fn forward_request(
                 }
             });
 
-            // Strip the route prefix from the path if needed
-            let upstream_path = if path == path_prefix {
-                "/".to_string()
-            } else {
-                path[path_prefix.len()..].to_string()
-            };
-            let upstream_path = if upstream_path.is_empty() || !upstream_path.starts_with('/') {
-                format!("/{}", upstream_path)
-            } else {
-                upstream_path
-            };
-
             let (mut parts, body) = req.into_parts();
-
-            // store query string
-            let query = parts
-                .uri
-                .query()
-                .map(|q| format!("?{q}"))
-                .unwrap_or_default();
-            parts.uri = format!("{upstream_path}{query}").parse().unwrap();
 
             // header not forward
             for h in [
