@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="300" viewBox="0 0 900 300" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#24292f">
+  <title>Blue-green version switch (planned, M4)</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .step { fill: #f6f8fa; stroke: #8c959f; stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .fail { fill: #ffebe9; stroke: #cf222e; stroke-width: 1.5; }
+      .edge { stroke: #57606a; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+      .t    { font-size: 14px; font-weight: bold; }
+      .lbl  { font-size: 11px; fill: #57606a; }
+    </style>
+  </defs>
+  <rect width="900" height="300" fill="#ffffff"/>
+
+  <!-- Which Version gets traffic -->
+  <rect x="20" y="20" width="605" height="24" rx="4" fill="#0969da"/>
+  <text x="322" y="37" text-anchor="middle" fill="#ffffff" font-weight="bold">traffic → blue (old Version)</text>
+  <rect x="625" y="20" width="255" height="24" rx="4" fill="#1a7f37"/>
+  <text x="752" y="37" text-anchor="middle" fill="#ffffff" font-weight="bold">traffic → green (new Version)</text>
+
+  <!-- Steps -->
+  <rect class="step" x="20" y="70" width="160" height="80" rx="6"/>
+  <text class="t" x="100" y="100" text-anchor="middle">1. Pull image</text>
+  <text x="100" y="120" text-anchor="middle">record digest</text>
+
+  <rect class="step" x="195" y="70" width="160" height="80" rx="6"/>
+  <text class="t" x="275" y="100" text-anchor="middle">2. Start green</text>
+  <text x="275" y="120" text-anchor="middle">next to blue,</text>
+  <text x="275" y="136" text-anchor="middle">Docker picks the port</text>
+
+  <rect class="step" x="370" y="70" width="160" height="80" rx="6"/>
+  <text class="t" x="450" y="100" text-anchor="middle">3. Wait for Ready</text>
+  <text x="450" y="120" text-anchor="middle">HTTP health check</text>
+  <text x="450" y="136" text-anchor="middle">at most 60 s</text>
+
+  <rect class="step" x="545" y="70" width="160" height="80" rx="6"/>
+  <text class="t" x="625" y="100" text-anchor="middle">4. Swap Route</text>
+  <text x="625" y="120" text-anchor="middle">atomic: each request</text>
+  <text x="625" y="136" text-anchor="middle">sees old or new</text>
+
+  <rect class="step" x="720" y="70" width="160" height="80" rx="6"/>
+  <text class="t" x="800" y="100" text-anchor="middle">5. Drain blue</text>
+  <text x="800" y="120" text-anchor="middle">in-flight = 0 or 30 s,</text>
+  <text x="800" y="136" text-anchor="middle">then remove blue</text>
+
+  <line class="edge" x1="180" y1="110" x2="193" y2="110"/>
+  <line class="edge" x1="355" y1="110" x2="368" y2="110"/>
+  <line class="edge" x1="530" y1="110" x2="543" y2="110"/>
+  <line class="edge" x1="705" y1="110" x2="718" y2="110"/>
+
+  <!-- Failure branch -->
+  <line class="edge" x1="450" y1="150" x2="450" y2="198"/>
+  <text class="lbl" x="458" y="178">not Ready in 60 s</text>
+  <rect class="fail" x="330" y="200" width="240" height="75" rx="6"/>
+  <text class="t" x="450" y="224" text-anchor="middle">Deploy failed</text>
+  <text x="450" y="244" text-anchor="middle">remove green, blue keeps serving,</text>
+  <text x="450" y="260" text-anchor="middle">Routing table untouched</text>
+</svg>

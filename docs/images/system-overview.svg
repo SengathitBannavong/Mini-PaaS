@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="490" viewBox="0 0 900 490" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#24292f">
+  <title>Mini PaaS system overview</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .done { fill: #ddf4ff; stroke: #0969da; stroke-width: 1.5; }
+      .plan { fill: #f6f8fa; stroke: #8c959f; stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .ext  { fill: #ffffff; stroke: #57606a; stroke-width: 1.5; }
+      .edge { stroke: #57606a; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+      .t    { font-size: 14px; font-weight: bold; }
+      .m    { font-family: Menlo, Consolas, monospace; font-size: 11px; }
+      .lbl  { font-size: 11px; fill: #57606a; }
+    </style>
+  </defs>
+  <rect width="900" height="490" fill="#ffffff"/>
+
+  <!-- Left: actors -->
+  <rect class="ext" x="20" y="60" width="150" height="50" rx="6"/>
+  <text class="t" x="95" y="90" text-anchor="middle">User / CI</text>
+
+  <rect class="plan" x="20" y="170" width="150" height="50" rx="6"/>
+  <text class="t" x="95" y="192" text-anchor="middle">Admin UI</text>
+  <text x="95" y="208" text-anchor="middle">browser</text>
+
+  <rect class="ext" x="20" y="290" width="150" height="50" rx="6"/>
+  <text class="t" x="95" y="320" text-anchor="middle">HTTP clients</text>
+
+  <!-- Middle: the single process -->
+  <rect x="230" y="30" width="380" height="410" rx="10" fill="none" stroke="#24292f" stroke-width="1.5"/>
+  <text class="t" x="420" y="52" text-anchor="middle">mini-paas process (one node)</text>
+
+  <rect class="plan" x="255" y="65" width="330" height="80" rx="6"/>
+  <text class="t" x="420" y="95" text-anchor="middle">Control plane</text>
+  <text x="420" y="115" text-anchor="middle">axum API · SSE · auth · serves admin UI</text>
+  <text x="420" y="132" text-anchor="middle">deploy · blue-green · draining</text>
+
+  <rect class="done" x="255" y="190" width="330" height="60" rx="6"/>
+  <text class="t" x="420" y="214" text-anchor="middle">Routing table</text>
+  <text class="m" x="420" y="234" text-anchor="middle">RwLock&lt;HashMap&lt;Host, Arc&lt;Route&gt;&gt;&gt;</text>
+
+  <rect class="done" x="255" y="285" width="330" height="60" rx="6"/>
+  <text class="t" x="420" y="309" text-anchor="middle">Router  :3000</text>
+  <text x="420" y="328" text-anchor="middle">hyper · middleware · round-robin</text>
+
+  <rect class="done" x="255" y="365" width="330" height="55" rx="6"/>
+  <text class="t" x="420" y="387" text-anchor="middle">Health checker</text>
+  <text x="420" y="405" text-anchor="middle">GET health path every 10 s, marks Replicas Ready</text>
+
+  <!-- Right: external systems -->
+  <rect class="plan" x="680" y="60" width="200" height="50" rx="6"/>
+  <text class="t" x="780" y="90" text-anchor="middle">Docker Engine</text>
+
+  <rect class="plan" x="680" y="140" width="170" height="50" rx="6"/>
+  <text class="t" x="765" y="170" text-anchor="middle">SQLite</text>
+
+  <rect x="680" y="250" width="200" height="180" rx="10" fill="none" stroke="#57606a" stroke-width="1.5"/>
+  <text class="t" x="780" y="272" text-anchor="middle">Replicas (containers)</text>
+  <rect class="done" x="700" y="285" width="160" height="45" rx="6"/>
+  <text x="780" y="312" text-anchor="middle">app v1 (blue)</text>
+  <rect class="plan" x="700" y="350" width="160" height="45" rx="6"/>
+  <text x="780" y="377" text-anchor="middle">app v2 (green)</text>
+
+  <!-- Edges -->
+  <line class="edge" x1="170" y1="85" x2="253" y2="90"/>
+  <text class="lbl" x="180" y="78">API key</text>
+
+  <line class="edge" x1="170" y1="190" x2="253" y2="130"/>
+  <text class="lbl" x="178" y="155">cookie</text>
+
+  <line class="edge" x1="170" y1="315" x2="253" y2="315"/>
+  <text class="lbl" x="176" y="308">Host: app…</text>
+
+  <line class="edge" x1="420" y1="145" x2="420" y2="188"/>
+  <text class="lbl" x="428" y="172">atomic swap on deploy</text>
+
+  <line class="edge" x1="420" y1="285" x2="420" y2="252"/>
+  <text class="lbl" x="428" y="272">lookup Host</text>
+
+  <line class="edge" x1="585" y1="85" x2="678" y2="85"/>
+  <text class="lbl" x="606" y="78">bollard</text>
+
+  <line class="edge" x1="585" y1="125" x2="678" y2="160"/>
+  <text class="lbl" x="606" y="132">state</text>
+
+  <line class="edge" x1="868" y1="110" x2="868" y2="248"/>
+  <text class="lbl" x="862" y="230" text-anchor="end">run</text>
+
+  <line class="edge" x1="585" y1="307" x2="698" y2="307"/>
+  <text class="lbl" x="600" y="300">proxy HTTP/1.1</text>
+
+  <line class="edge" x1="585" y1="395" x2="678" y2="415"/>
+  <text class="lbl" x="600" y="425">probe</text>
+
+  <!-- Legend -->
+  <rect class="done" x="230" y="458" width="28" height="16" rx="3"/>
+  <text x="266" y="471">implemented</text>
+  <rect class="plan" x="370" y="458" width="28" height="16" rx="3"/>
+  <text x="406" y="471">planned</text>
+  <rect class="ext" x="490" y="458" width="28" height="16" rx="3"/>
+  <text x="526" y="471">external</text>
+</svg>
