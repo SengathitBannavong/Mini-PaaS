@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(2)
         .unwrap_or_else(|| format!("backend-{}", port));
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = TcpListener::bind(addr).await?;
     println!("{} listening on http://{}", name, addr);
 
@@ -46,16 +46,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn handle(
-    req: Request<hyper::body::Incoming>,
+    _req: Request<hyper::body::Incoming>,
     name: &str,
-    client_ip: std::net::IpAddr,
+    _client_ip: std::net::IpAddr,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
-    let body = format!(
-        "Response from: {} at {}\nPath: {} {}\n",
-        name,
-        client_ip.to_string(),
-        req.method(),
-        req.uri().path()
-    );
-    Ok(Response::new(Full::new(Bytes::from(body))))
+    // 100-200 ms so requests are always in flight when the version switches
+    let jitter = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos()
+        % 101;
+    tokio::time::sleep(std::time::Duration::from_millis(100 + jitter as u64)).await;
+    Ok(Response::new(Full::new(Bytes::from(format!("{name}\n")))))
 }
