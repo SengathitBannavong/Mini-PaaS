@@ -11,7 +11,7 @@ mkdir -p "$RESULTS"
 # parse_args "$@": sets RUN RATE DURATION, prints the script's usage on -h/--help or bad input
 parse_args() {
     local usage
-    usage=$(grep '^# Usage:' "$0" | sed 's/^# //')
+    usage=$(grep '^# Usage:' "$(basename "$0")" | sed 's/^# //')  # scripts cd into bench/ first
     case "${1:-}" in -h|--help) echo "$usage"; exit 0 ;; esac
     RUN=${1:-1} RATE=${2:-500} DURATION=${3:-60s}
     [[ $RUN =~ ^[0-9]+$ && $RATE =~ ^[0-9]+$ && $DURATION =~ ^[0-9]+[smh]$ ]] \
