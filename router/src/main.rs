@@ -21,6 +21,7 @@ use crate::router::Router;
 struct Gateway {
     router: Arc<Router>,
     pipeline: MiddlewarePipeline,
+    client: proxy::HttpClient,
 }
 
 #[tokio::main]
@@ -28,14 +29,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configure our routes
     let router = Arc::new(Router::new());
     println!("Configuring routes...");
-    router.set_route(
-        "users.localhost",
-        vec!["http://127.0.0.1:8081", "http://127.0.0.1:8083"],
-    );
-    router.set_route(
-        "orders.localhost",
-        vec!["http://127.0.0.1:8082", "http://127.0.0.1:8084"],
-    );
+    router.set_route("app.localhost", vec!["http://127.0.0.1:18081"]);
+    // router.set_route(
+    //     "orders.localhost",
+    //     vec!["http://127.0.0.1:8082", "http://127.0.0.1:8084"],
+    // );
 
     // Start background health checks
     println!("Starting health checks...");
@@ -51,7 +49,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .add_response_header("X-Powered-By", "ReverseProxy/0.1"),
     ));
 
-    let gateway = Arc::new(Gateway { router, pipeline });
+    let gateway = Arc::new(Gateway {
+        router,
+        pipeline,
+        client: proxy::new_client(),
+    });
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = TcpListener::bind(addr).await?;
@@ -120,7 +122,9 @@ async fn handle_request(
     // Route and proxy
     let response = match gateway.router.find_route(&host) {
         Some(route) => match route.next_backend() {
-            Some(backend) => proxy::forward_request(boxed_req, &backend, client_ip).await?,
+            Some(backend) => {
+                proxy::forward_request(&gateway.client, boxed_req, &backend, client_ip).await?
+            }
             None => {
                 // All backends are down
                 let body = Full::new(Bytes::from(
@@ -203,6 +207,7 @@ mod tests {
         let gateway = Gateway {
             router: router.clone(),
             pipeline: MiddlewarePipeline::new(),
+            client: proxy::new_client(),
         };
         tokio::spawn(serve(listener, Arc::new(gateway)));
 
