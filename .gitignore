@@ -1,2 +1,4 @@
 docs/TODO.md
 docs/commit.md
+bench/results/*/raw.tar.gz
+__pycache__
