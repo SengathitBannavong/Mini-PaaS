@@ -15,8 +15,12 @@ A Docker image of an **App**, identified by its digest, not its tag, and running
 _Avoid_: release, build
 
 **Replica** (_Replica_):
-One running container of a **Version**.
+One running container of a **Version**, reached by the **Router** at its IP on Docker's `bridge` network (see ADR 0002).
 _Avoid_: backend, instance, upstream
+
+**Deployment** (_Lần triển khai_):
+One deploy command for an **App**: pull the image, start the new **Version**, switch traffic if it becomes **Ready**. Recorded as one row in SQLite with status `running`, `succeeded` or `failed`. Only one Deployment runs at a time across all Apps.
+_Avoid_: release, rollout
 
 **Ready** (_Sẵn sàng_):
 State of a **Replica** that has answered an HTTP health check successfully. Only **Ready** Replicas are put into a **Route**.

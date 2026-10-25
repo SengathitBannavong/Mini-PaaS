@@ -51,7 +51,7 @@ Mục tiêu không phải cạnh tranh với sản phẩm thương mại, mà l�
 
 **Trong phạm vi**
 
-- Một node.
+- Một máy Linux chạy Docker Engine; bộ định tuyến chạy trên chính máy đó.
 - Giao thức HTTP/1.1.
 - Giao diện quản trị web, do control plane phục vụ dưới dạng tệp tĩnh.
 - Xác thực tối thiểu cho một tài khoản quản trị.
@@ -63,7 +63,7 @@ Mục tiêu không phải cạnh tranh với sản phẩm thương mại, mà l�
 - Việc build image từ Dockerfile do CI bên ngoài (GitHub Actions) đảm nhiệm, không thuộc phạm vi hệ thống.
 - Mỗi lần triển khai người dùng cung cấp: tên image, tên miền (`Host`), cổng trong container và đường dẫn health check.
 - Cổng trong container và đường dẫn health check là tùy chọn: nếu bỏ trống, hệ thống lấy cổng từ khai báo `EXPOSE` của image và dùng đường dẫn `/`.
-- Cổng phía máy chủ do Docker cấp phát tự động cho từng container, nên không xung đột cổng giữa các ứng dụng hay giữa hai phiên bản của cùng một ứng dụng.
+- Bộ định tuyến kết nối tới từng container qua IP trong mạng `bridge` của Docker; không publish cổng nào ra máy chủ, nên không xung đột cổng giữa các ứng dụng hay giữa hai phiên bản của cùng một ứng dụng.
 - Image được pull lại ở mỗi lần triển khai và phiên bản được ghi nhận theo digest.
 - Health check bằng request HTTP, không chỉ kiểm tra kết nối TCP.
 - Bảng định tuyến chỉ thay đổi khi phiên bản mới đã sẵn sàng. Nếu phiên bản mới không qua health check trong 60 giây, phiên bản cũ tiếp tục phục vụ, container mới bị xóa và lần triển khai được ghi nhận là thất bại.

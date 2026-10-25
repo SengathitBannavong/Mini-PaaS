@@ -53,7 +53,7 @@ The aim is not to compete with commercial products, but to understand the basic 
 
 **In scope**
 
-- One node.
+- One Linux host running Docker Engine; the router runs on that host.
 - HTTP/1.1.
 - Web admin UI, served by the control plane as static files.
 - Minimal authentication for one admin account.
@@ -65,7 +65,7 @@ The aim is not to compete with commercial products, but to understand the basic 
 - Building images from a Dockerfile is done by external CI (GitHub Actions) and is outside the system's scope.
 - For each deploy the user provides: image name, domain (`Host`), container port and health-check path.
 - Container port and health-check path are optional: if empty, the system takes the port from the image's `EXPOSE` declaration and uses the path `/`.
-- The host-side port is assigned automatically by Docker for each container, so ports never clash between apps or between two versions of the same app.
+- The router reaches each container by its IP on Docker's `bridge` network; no ports are published on the host, so ports never clash between apps or between two versions of the same app.
 - The image is pulled again on every deploy and the version is recorded by digest.
 - Health checks send an HTTP request, not just a TCP connect.
 - The routing table changes only when the new version is ready. If the new version does not pass the health check within 60 seconds, the old version keeps serving, the new container is removed and the deploy is recorded as failed.
