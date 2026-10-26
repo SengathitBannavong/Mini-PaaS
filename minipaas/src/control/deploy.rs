@@ -13,6 +13,7 @@ pub struct AppState {
     pub docker: Docker,
     /// one Deployment at a time across all Apps
     pub deploy_lock: tokio::sync::Mutex<()>,
+    pub api_key: String,
 }
 
 #[derive(Deserialize)]

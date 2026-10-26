@@ -26,12 +26,17 @@ struct Gateway {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configure our routes
-    let router = Arc::new(Router::new());
     println!("Configuring routes...");
+    let api_key = std::env::var("MINIPAAS_API_KEY").unwrap_or_default();
+    if api_key.len() < 32 {
+        return Err("set MINIPAAS_API_KEY (at least 32 chars, e.g. `openssl rand -hex 32`)".into());
+    }
+    let router = Arc::new(Router::new());
     let state = Arc::new(AppState {
         router: router.clone(),
         docker: bollard::Docker::connect_with_local_defaults()?,
         deploy_lock: tokio::sync::Mutex::new(()),
+        api_key,
     });
 
     // Start background health checks
