@@ -6,6 +6,7 @@ use bollard::query_parameters::{
 };
 use futures_util::TryStreamExt;
 use std::collections::HashMap;
+use std::path;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -32,11 +33,13 @@ pub async fn pull(docker: &Docker, image: &str, port: Option<u16>) -> Result<Spe
         .await?;
 
     let img = docker.inspect_image(image).await?;
-    let digest = img
-        .repo_digests
-        .unwrap_or_default()
-        .into_iter()
-        .next()
+    let digests = img.repo_digests.unwrap_or_default();
+    let prefix = format!("{}@", repo_of(image));
+    let digest = digests
+        .iter()
+        .find(|d| d.starts_with(&prefix))
+        .or(digests.first())
+        .cloned()
         .ok_or("image has no digest (built locally? push it to a registry)")?;
     let port = match port {
         Some(p) => p,
@@ -53,6 +56,15 @@ pub async fn pull(docker: &Docker, image: &str, port: Option<u16>) -> Result<Spe
         }
     };
     Ok(Spec { digest, port })
+}
+
+/// "localhost:5000/app:v1" -> "localhost:5000/app" (keeps a registry port, drops tag or digest)
+fn repo_of(image: &str) -> &str {
+    let image = image.split('@').next().unwrap_or(image);
+    match image.rsplit_once(':') {
+        Some((repo, tag)) if !tag.contains('/') => repo,
+        _ => image,
+    }
 }
 
 /// Start one container of `spec` for `host` on the default bridge network
@@ -139,5 +151,16 @@ mod tests {
         }
         remove(&docker, &r.id).await.unwrap();
         assert!(ready, "{} never answered", r.url);
+    }
+
+    #[test]
+    fn repo_of_drops_tag_and_digest_but_keeps_registry_port() {
+        assert_eq!(
+            repo_of("localhost:5000/testapp:v1"),
+            "localhost:5000/testapp"
+        );
+        assert_eq!(repo_of("localhost:5000/testapp"), "localhost:5000/testapp");
+        assert_eq!(repo_of("traefik/whoami@sha256:abc"), "traefik/whoami");
+        assert_eq!(repo_of("nginx"), "nginx");
     }
 }
