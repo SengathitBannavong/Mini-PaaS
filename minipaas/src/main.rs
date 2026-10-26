@@ -1,4 +1,4 @@
-// mod control; // TODO: enable once control/docker.rs exists
+mod control;
 mod router;
 
 use bytes::Bytes;
@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configure our routes
     let router = Arc::new(Router::new());
     println!("Configuring routes...");
-    router.set_route("app.localhost", vec!["http://127.0.0.1:18081"]);
+    router.set_route("app.localhost", "/", vec!["http://127.0.0.1:18081"]);
     // router.set_route(
     //     "orders.localhost",
     //     vec!["http://127.0.0.1:8082", "http://127.0.0.1:8084"],
@@ -199,7 +199,7 @@ mod tests {
         let green = spawn_backend("green").await;
 
         let router = Arc::new(Router::new());
-        router.set_route("app.localhost", vec![blue.as_str()]);
+        router.set_route("app.localhost", "/", vec![blue.as_str()]);
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let gateway = Gateway {
@@ -219,7 +219,7 @@ mod tests {
         assert_eq!(get(addr, "nope.localhost", "/").await.0, 404);
 
         // Swap while running: the next request goes to green
-        router.set_route("app.localhost", vec![green.as_str()]);
+        router.set_route("app.localhost", "/", vec![green.as_str()]);
         assert_eq!(get(addr, "app.localhost", "/").await.1, "green / a=1");
     }
 }

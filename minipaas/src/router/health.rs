@@ -23,7 +23,7 @@ pub fn start_health_checks(router: Arc<Router>, interval_secs: u64) {
 }
 
 /// Healthy = answer GET <path> with 2xx within 3s
-async fn check_backend(host: &str, port: u16, path: &str) -> bool {
+pub(crate) async fn check_backend(host: &str, port: u16, path: &str) -> bool {
     let probe = async {
         let stream = TcpStream::connect((host, port)).await.ok()?;
         let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
