@@ -1,3 +1,7 @@
+pub mod health;
+pub mod middleware;
+pub mod proxy;
+
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 

@@ -1,5 +1,5 @@
-use crate::middleware::Middleware;
-use crate::middleware::RequestContext;
+use crate::router::middleware::Middleware;
+use crate::router::middleware::RequestContext;
 use bytes::Bytes;
 use http_body_util::combinators::BoxBody;
 use hyper::{Request, Response};

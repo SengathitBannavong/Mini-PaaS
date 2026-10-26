@@ -1,6 +1,4 @@
-mod health;
-mod middleware;
-mod proxy;
+// mod control; // TODO: enable once control/docker.rs exists
 mod router;
 
 use bytes::Bytes;
@@ -13,10 +11,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
-use crate::middleware::headers::AddHeadersMiddleware;
-use crate::middleware::logging::LoggingMiddleware;
-use crate::middleware::{MiddlewarePipeline, RequestContext};
-use crate::router::Router;
+use crate::router::middleware::headers::AddHeadersMiddleware;
+use crate::router::middleware::logging::LoggingMiddleware;
+use crate::router::middleware::{MiddlewarePipeline, RequestContext};
+use crate::router::{Router, health, proxy};
 
 struct Gateway {
     router: Arc<Router>,

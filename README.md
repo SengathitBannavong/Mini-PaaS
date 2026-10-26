@@ -14,12 +14,12 @@ Requirements: Rust (edition 2024), Docker.
 
 ```sh
 # 1. Build and start the test app (answers in 100–200 ms with its version name)
-docker build -t testapp:v1 --build-arg VERSION=v1 router
+docker build -t testapp:v1 --build-arg VERSION=v1 minipaas
 docker run -d --name app-v1 -p 18081:8080 testapp:v1
 
 # 2. Start the router on 127.0.0.1:3000
-#    (the route app.localhost -> 127.0.0.1:18081 is hard-coded in router/src/main.rs for now)
-cd router && cargo run --release
+#    (the route app.localhost -> 127.0.0.1:18081 is hard-coded in minipaas/src/main.rs for now)
+cd minipaas && cargo run --release
 
 # 3. Send a request through the router
 curl -H 'Host: app.localhost' http://127.0.0.1:3000/
@@ -29,7 +29,7 @@ curl -H 'Host: app.localhost' http://127.0.0.1:3000/
 Run the tests:
 
 ```sh
-cd router && cargo test
+cd minipaas && cargo test
 ```
 
 Load test (needs [vegeta](https://github.com/tsenart/vegeta) and `python3`): see [`docs/benchmarking.md`](docs/benchmarking.md).
@@ -37,8 +37,8 @@ Load test (needs [vegeta](https://github.com/tsenart/vegeta) and `python3`): see
 ## Repository layout
 
 ```
-router/            Rust crate: the router (and, later, the control plane — same process)
-  src/             router source, see ARCHITECTURE.md for a file-by-file map
+minipaas/          Rust crate: router + control plane in one process
+  src/             router/ and control/ modules, see ARCHITECTURE.md for a file-by-file map
   examples/        backend.rs: slow test app used as a Replica
   Dockerfile       builds the test app image (testapp:vN)
 bench/             load-test scripts (vegeta + per-second report)

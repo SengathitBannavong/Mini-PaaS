@@ -1,4 +1,4 @@
-use crate::middleware::Middleware;
+use crate::router::middleware::Middleware;
 
 pub struct AddHeadersMiddleware {
     request_headers: Vec<(String, String)>,

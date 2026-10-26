@@ -12,8 +12,8 @@ stop_all
 start_apps
 
 # Build first and run the binary directly: killing `cargo run` would leave the router running
-cargo build --release --quiet --manifest-path ../router/Cargo.toml
-../router/target/release/router >"$RESULTS/router.log" 2>&1 &
+cargo build --release --quiet --manifest-path ../minipaas/Cargo.toml
+../minipaas/target/release/minipaas >"$RESULTS/router.log" 2>&1 &
 ROUTER_PID=$!
 wait_ready http://127.0.0.1:3000/ app.localhost
 

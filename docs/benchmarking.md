@@ -14,7 +14,7 @@ How to load-test the router, and how the main experiment (goal **M5**) is set up
 Measures the router under constant load, **without** a version switch. This gives the baseline numbers.
 
 ```sh
-docker build -t testapp:v1 --build-arg VERSION=v1 router
+docker build -t testapp:v1 --build-arg VERSION=v1 minipaas
 bench/vegeta-test.sh 500 60s     # rate (req/s), duration
 ```
 

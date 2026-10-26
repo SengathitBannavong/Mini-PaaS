@@ -31,7 +31,7 @@ External pieces:
 
 ## Request path ✅
 
-What happens to one request, in order (`router/src/main.rs`, `handle_request`):
+What happens to one request, in order (`minipaas/src/main.rs`, `handle_request`):
 
 1. **Accept** — a `tokio` task per TCP connection, served by `hyper` HTTP/1.1.
 2. **Middleware (request side)** — each middleware may modify the request or answer early. Today: logging, add `X-Gateway` header.
@@ -54,7 +54,7 @@ Router
 
 ## Health checks ✅
 
-A background task (`router/src/health.rs`) runs every 10 s. For each Replica it sends `GET <health_path>` (default `/`) and marks it Ready only on a `2xx` within 3 s. A plain TCP connect is not enough. Replicas that are not Ready are skipped in step 4 above.
+A background task (`minipaas/src/router/health.rs`) runs every 10 s. For each Replica it sends `GET <health_path>` (default `/`) and marks it Ready only on a `2xx` within 3 s. A plain TCP connect is not enough. Replicas that are not Ready are skipped in step 4 above.
 
 ## Deploy and version switch 🚧
 
@@ -82,17 +82,17 @@ Rules:
 
 ## Code map
 
-Only files that exist today. Paths are relative to `router/`.
+Only files that exist today. Paths are relative to `minipaas/`.
 
 | File | What it does |
 |---|---|
 | `src/main.rs` | Start-up (hard-coded routes, health checks, middleware), accept loop, `handle_request`; end-to-end test that routes by Host and swaps a Route at runtime |
-| `src/router.rs` | `Router` (routing table), `Route` (Replicas + round-robin), `Backend` (one Replica) |
-| `src/proxy.rs` | Pooled HTTP client and `forward_request` (URI rewrite, hop-by-hop headers, `X-Forwarded-For`, `502`) |
-| `src/health.rs` | Periodic HTTP health checks |
-| `src/middleware/mod.rs` | `Middleware` trait and `MiddlewarePipeline` |
-| `src/middleware/logging.rs` | Per-request log lines with latency |
-| `src/middleware/headers.rs` | Add fixed request/response headers |
+| `src/router/mod.rs` | `Router` (routing table), `Route` (Replicas + round-robin), `Backend` (one Replica) |
+| `src/router/proxy.rs` | Pooled HTTP client and `forward_request` (URI rewrite, hop-by-hop headers, `X-Forwarded-For`, `502`) |
+| `src/router/health.rs` | Periodic HTTP health checks |
+| `src/router/middleware/mod.rs` | `Middleware` trait and `MiddlewarePipeline` |
+| `src/router/middleware/logging.rs` | Per-request log lines with latency |
+| `src/router/middleware/headers.rs` | Add fixed request/response headers |
 | `examples/backend.rs` | Test app: answers with its name after 100–200 ms, so requests are always in flight during a switch |
 | `Dockerfile` | Packs `examples/backend.rs` as `testapp:<VERSION>` |
 | `../bench/` | vegeta load test and per-second report, see [docs/benchmarking.md](docs/benchmarking.md) |
