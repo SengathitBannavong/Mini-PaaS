@@ -1,12 +1,12 @@
 use bollard::Docker;
 use bollard::models::{ContainerCreateBody, ContainerInspectResponse};
+use bollard::plugin::ContainerSummary;
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptionsBuilder, InspectContainerOptions,
-    RemoveContainerOptionsBuilder, StartContainerOptions,
+    ListContainersOptionsBuilder, RemoveContainerOptionsBuilder, StartContainerOptions,
 };
 use futures_util::TryStreamExt;
 use std::collections::HashMap;
-use std::path;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -105,7 +105,7 @@ pub async fn start_replica(
 }
 
 /// Where the router sends traffic for this container (ADR 0002).
-// ponytail: Linux + bridge only. Docker Desktop (Mac/Win) or remote host -> publish port and return host:port here
+// Linux + bridge only. Docker Desktop (Mac/Win) or remote host -> publish port and return host:port here
 fn replica_url(info: &ContainerInspectResponse, port: u16) -> Option<String> {
     let ip = info
         .network_settings
@@ -122,6 +122,20 @@ fn replica_url(info: &ContainerInspectResponse, port: u16) -> Option<String> {
 pub async fn remove(docker: &Docker, id: &str) -> Result<(), Error> {
     let opts = RemoveContainerOptionsBuilder::default().force(true).build();
     Ok(docker.remove_container(id, Some(opts)).await?)
+}
+
+/// Containers we created (found by label); `host` = only that App's. Includes stopped ones.
+pub async fn list(docker: &Docker, host: Option<&str>) -> Result<Vec<ContainerSummary>, Error> {
+    let label = match host {
+        Some(h) => format!("minipaas.host={h}"),
+        None => "minipaas.host".to_string(),
+    };
+    let filters = HashMap::from([("label".to_string(), vec![label])]);
+    let opts = ListContainersOptionsBuilder::default()
+        .all(true)
+        .filters(&filters)
+        .build();
+    Ok(docker.list_containers(Some(opts)).await?)
 }
 
 #[cfg(test)]

@@ -11,6 +11,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
+use crate::control::deploy::AppState;
 use crate::router::middleware::headers::AddHeadersMiddleware;
 use crate::router::middleware::logging::LoggingMiddleware;
 use crate::router::middleware::{MiddlewarePipeline, RequestContext};
@@ -27,11 +28,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configure our routes
     let router = Arc::new(Router::new());
     println!("Configuring routes...");
-    router.set_route("app.localhost", "/", vec!["http://127.0.0.1:18081"]);
-    // router.set_route(
-    //     "orders.localhost",
-    //     vec!["http://127.0.0.1:8082", "http://127.0.0.1:8084"],
-    // );
+    let state = Arc::new(AppState {
+        router: router.clone(),
+        docker: bollard::Docker::connect_with_local_defaults()?,
+        deploy_lock: tokio::sync::Mutex::new(()),
+    });
 
     // Start background health checks
     println!("Starting health checks...");
@@ -58,7 +59,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Reverse proxy API Gateway listening on http://{}", addr);
 
-    serve(listener, gateway).await?;
+    let api_addr = SocketAddr::from(([127, 0, 0, 1], 3001));
+    let api_listener = TcpListener::bind(api_addr).await?;
+    println!("Control plane API listening on http://{}", api_addr);
+
+    tokio::try_join!(
+        serve(listener, gateway),
+        axum::serve(api_listener, control::api::app(state)).into_future()
+    )?;
     Ok(())
 }
 
