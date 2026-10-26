@@ -10,3 +10,5 @@ hyper-util = { version= "0.1", features= ["full"] }
 http-body-util = "0.1"
 bytes = "1"
 chrono = "0.4.45"
+bollard = "0.21"
+futures-util = "0.3"
