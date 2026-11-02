@@ -138,6 +138,15 @@ pub async fn list(docker: &Docker, host: Option<&str>) -> Result<Vec<ContainerSu
     Ok(docker.list_containers(Some(opts)).await?)
 }
 
+/// Router address of an existing contrainer (used when rebuilding Routes on start)
+pub async fn url_of(docker: &Docker, id: &str, port: u16) -> Option<String> {
+    let info = docker
+        .inspect_container(id, None::<InspectContainerOptions>)
+        .await
+        .ok()?;
+    replica_url(&info, port)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

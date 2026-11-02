@@ -24,7 +24,7 @@ struct Gateway {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), control::docker::Error> {
     // Configure our routes
     println!("Configuring routes...");
     let api_key = std::env::var("MINIPAAS_API_KEY").unwrap_or_default();
@@ -37,6 +37,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         docker: bollard::Docker::connect_with_local_defaults()?,
         deploy_lock: tokio::sync::Mutex::new(()),
         api_key,
+        db: std::sync::Mutex::new(control::db::open(
+            &std::env::var("MINIPAAS_DB").unwrap_or_else(|_| "minipaas.db".to_string()),
+        )?),
     });
 
     // Start background health checks
@@ -67,6 +70,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_addr = SocketAddr::from(([127, 0, 0, 1], 3001));
     let api_listener = TcpListener::bind(api_addr).await?;
     println!("Control plane API listening on http://{}", api_addr);
+
+    // Rebuild routes from running containers...
+    println!("Rebuilding routes from running containers...");
+    control::deploy::recover(&state).await?;
 
     tokio::try_join!(
         serve(listener, gateway),
