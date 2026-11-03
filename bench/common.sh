@@ -6,6 +6,7 @@ RESULTS=/tmp/bench
 BLUE=127.0.0.1:18081     # testapp:v1
 GREEN=127.0.0.1:18082    # testapp:v2
 SWITCH_AT=20             # seconds into the attack
+REGISTRY=localhost:5000  # local registry: deploys get a real digest, no internet in the measurement
 mkdir -p "$RESULTS"
 
 # parse_args "$@": sets RUN RATE DURATION, prints the script's usage on -h/--help or bad input
@@ -26,6 +27,19 @@ start_apps() {
 stop_all() {
     if [ -n "${ROUTER_PID:-}" ]; then kill "$ROUTER_PID" 2>/dev/null || true; fi
     docker rm -f bench-blue bench-green bench-nginx >/dev/null 2>&1 || true
+    # containers started by minipaas (careful: also removes apps you deployed by hand)
+    docker ps -aq --filter label=minipaas.host | xargs -r docker rm -f >/dev/null
+}
+
+# push_images: testapp:v1/v2 into the local registry so a deploy can pull them by digest
+push_images() {
+    docker start bench-registry >/dev/null 2>&1 \
+        || docker run -d --name bench-registry -p 127.0.0.1:5000:5000 registry:2 >/dev/null
+    for _ in $(seq 50); do curl -sf -o /dev/null http://127.0.0.1:5000/v2/ && break; sleep 0.2; done
+    for v in v1 v2; do
+        docker tag "testapp:$v" "$REGISTRY/testapp:$v"
+        docker push -q "$REGISTRY/testapp:$v" >/dev/null
+    done
 }
 
 # wait_ready URL [HOST]
