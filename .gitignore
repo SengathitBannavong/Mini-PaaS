@@ -3,3 +3,4 @@ docs/commit.md
 bench/results/*/raw.tar.gz
 __pycache__
 *.db
+temp/
