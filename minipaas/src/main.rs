@@ -15,7 +15,7 @@ use crate::control::deploy::AppState;
 use crate::router::middleware::headers::AddHeadersMiddleware;
 use crate::router::middleware::logging::LoggingMiddleware;
 use crate::router::middleware::{MiddlewarePipeline, RequestContext};
-use crate::router::{Router, health, proxy};
+use crate::router::{InFlight, Router, health, proxy};
 
 struct Gateway {
     router: Arc<Router>,
@@ -141,7 +141,16 @@ async fn handle_request(
     let response = match gateway.router.find_route(&host) {
         Some(route) => match route.next_backend() {
             Some(backend) => {
-                proxy::forward_request(&gateway.client, boxed_req, &backend, client_ip).await?
+                let guard = InFlight::new(&backend);
+                let res =
+                    proxy::forward_request(&gateway.client, boxed_req, &backend, client_ip).await?;
+                res.map(|body| {
+                    body.map_frame(move |frame| {
+                        let _ = &guard;
+                        frame
+                    })
+                    .boxed()
+                })
             }
             None => {
                 // All backends are down

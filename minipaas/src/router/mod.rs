@@ -15,6 +15,8 @@ pub struct Backend {
     pub port: u16,
     pub url: String,
     pub healthy: bool,
+    /// In-flight requests on this Replica. Clones share it
+    pub in_flight: Arc<AtomicUsize>,
 }
 
 impl Backend {
@@ -28,6 +30,7 @@ impl Backend {
             port,
             url: url.to_string(),
             healthy: true,
+            in_flight: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -66,6 +69,15 @@ impl Route {
 
         let idx = self.current.fetch_add(1, Ordering::Relaxed) % healthy.len();
         Some(healthy[idx].clone())
+    }
+
+    /// In-flight requests over all Replicas of this Route
+    pub fn in_flight(&self) -> usize {
+        let backends = self.backends.read().unwrap();
+        backends
+            .iter()
+            .map(|b| b.in_flight.load(Ordering::SeqCst))
+            .sum()
     }
 
     /// Get all backends (for health checking)
@@ -119,9 +131,43 @@ impl Router {
     }
 }
 
+/// Counts on In-flight request on a Replica until dropped
+pub struct InFlight(Arc<AtomicUsize>);
+
+impl InFlight {
+    pub fn new(backend: &Backend) -> Self {
+        backend.in_flight.fetch_add(1, Ordering::SeqCst);
+        InFlight(backend.in_flight.clone())
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn in_flight_counts_untils_guard_dropped_and_survives_route_swap() {
+        let r = Router::new();
+        r.set_route("a.localhost", "/", vec!["http://127.0.0.1:8081"]);
+        let blue = r.find_route("a.localhost").unwrap();
+        let g1 = InFlight::new(&blue.next_backend().unwrap());
+        let g2 = InFlight::new(&blue.next_backend().unwrap());
+        assert_eq!(blue.in_flight(), 2);
+
+        r.set_route("a.localhost", "/", vec!["http://127.0.0.1:8082"]); // swap to green
+        assert_eq!(r.find_route("a.localhost").unwrap().in_flight(), 0);
+        assert_eq!(blue.in_flight(), 2);
+
+        drop(g1);
+        drop(g2);
+        assert_eq!(blue.in_flight(), 0);
+    }
 
     #[test]
     fn routes_by_host_ignoring_port_and_case() {

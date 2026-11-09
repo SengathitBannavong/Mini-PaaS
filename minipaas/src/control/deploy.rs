@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bollard::Docker;
 use bollard::plugin::{ContainerSummary, ContainerSummaryStateEnum};
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::control::db;
 use crate::control::docker::{self, Error, Replica};
-use crate::router::{Backend, Router, health};
+use crate::router::{Backend, Route, Router, health};
 
 /// Everything the control plane shares between request
 pub struct AppState {
@@ -34,6 +34,13 @@ pub struct DeployReq {
 pub struct DeployRes {
     pub digest: String,
     pub replicas: Vec<String>,
+    /// How long each step took, to explain the Route-effective time
+    pub pull_ms: u128,
+    pub start_ms: u128,
+    pub ready_ms: u128,
+    pub drain_ms: u128,
+    /// In-flight requests on blue still running when the 30s drain limit hit
+    pub cut: usize,
 }
 
 /// One Deployment, recorded in SQLite from start to end
@@ -54,12 +61,12 @@ pub async fn deploy(s: Arc<AppState>, host: String, req: DeployReq) -> Result<De
     res
 }
 
-/// pull -> start green -> wait Ready -> swap Route -> wait 5s -> remove blue
+/// pull -> start green -> wait Ready -> swap Route -> drain blue (<= 30s) -> remove blue
 async fn run(s: &AppState, id: i64, host: &str, req: DeployReq) -> Result<DeployRes, Error> {
     let host = host.to_string();
     let health_path = req.health_path.unwrap_or_else(|| "/".to_string());
     let n = req.replicas.unwrap_or(1).max(1);
-    let wait_s = 3;
+    let t = Instant::now();
 
     // blue = what runs now (listed before green exists)
     let blue: Vec<String> = docker::list(&s.docker, Some(&host))
@@ -70,6 +77,8 @@ async fn run(s: &AppState, id: i64, host: &str, req: DeployReq) -> Result<Deploy
 
     let spec = docker::pull(&s.docker, &req.image, req.port).await?;
     db::set_digest(&s.db.lock().unwrap(), id, &spec.digest)?;
+    let pull_ms = t.elapsed().as_millis();
+    let t = Instant::now();
 
     let mut green: Vec<Replica> = Vec::new();
     for _ in 0..n {
@@ -82,23 +91,55 @@ async fn run(s: &AppState, id: i64, host: &str, req: DeployReq) -> Result<Deploy
         }
     }
 
+    let start_ms = t.elapsed().as_millis();
+    let t = Instant::now();
+
     let urls: Vec<&str> = green.iter().map(|r| r.url.as_str()).collect();
     if !wait_ready(&urls, &health_path).await {
         remove_all(&s.docker, green.iter().map(|r| r.id.as_str())).await;
         return Err(format!("not Ready within 60s: GET {health_path} on {urls:?}").into());
     }
-    s.router.set_route(&host, &health_path, urls.clone());
+    let ready_ms = t.elapsed().as_millis();
 
-    if !blue.is_empty() {
-        // TODO: fixed wait instead of draining; replaced by in-flight counter in M4
-        tokio::time::sleep(Duration::from_secs(wait_s)).await;
-    }
+    // blue's Route as requests see it now: its Replicas carry the In-flight counters
+    let old_routes = s.router.find_route(&host);
+    s.router.set_route(&host, &health_path, urls.clone()); // Swap here
+    let t = Instant::now();
+    let cut = match old_routes {
+        Some(old) => drain(&old, Duration::from_secs(30)).await,
+        None => 0,
+    };
+    let drain_ms = t.elapsed().as_millis();
+
     remove_all(&s.docker, blue.iter().map(String::as_str)).await;
+    println!(
+        "  [deploy] {host}: pull {pull_ms} ms, start {start_ms} ms, ready {ready_ms} ms, drain {drain_ms} ms, cut {cut}"
+    );
 
     Ok(DeployRes {
         digest: spec.digest,
         replicas: urls.iter().map(|u| u.to_string()).collect(),
+        pull_ms,
+        start_ms,
+        ready_ms,
+        drain_ms,
+        cut,
     })
+}
+
+/// Draining: wait until blue has no in-flight requests, at most `limit`
+/// Returns how many were still running at the limit (they are cut and count as Failed requests).
+async fn drain(old: &Route, limit: Duration) -> usize {
+    let deadline = Instant::now() + limit;
+    loop {
+        // Sleep first: a request that picked blue just before the swap gets time to register
+        // 50ms polling
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let n = old.in_flight();
+        if n == 0 || Instant::now() >= deadline {
+            return n;
+        }
+    }
 }
 
 /// Ready = every replica answers `path` with 2xx; checked every 100 ms, give up after 60 s

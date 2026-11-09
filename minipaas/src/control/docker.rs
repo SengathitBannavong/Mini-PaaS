@@ -27,10 +27,13 @@ pub async fn pull(docker: &Docker, image: &str, port: Option<u16>) -> Result<Spe
     let opts = CreateImageOptionsBuilder::default()
         .from_image(image)
         .build();
-    docker
+    // a stuck registry would otherwise hold the global deploy lock forever
+    let pull = docker
         .create_image(Some(opts), None, None)
-        .try_collect::<Vec<_>>()
-        .await?;
+        .try_collect::<Vec<_>>();
+    tokio::time::timeout(std::time::Duration::from_secs(300), pull)
+        .await
+        .map_err(|_| "pull timed out after 300 s")??;
 
     let img = docker.inspect_image(image).await?;
     let digests = img.repo_digests.unwrap_or_default();
